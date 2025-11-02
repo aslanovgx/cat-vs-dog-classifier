@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8" />
+  <title>🐱🐶 Cat vs Dog — Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:720px;margin:40px auto;padding:0 16px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .card{border:1px solid #ddd;border-radius:12px;padding:16px}
+    .preview{max-width:280px;margin-top:10px;display:block}
+    button{padding:10px 16px;border-radius:8px;border:1px solid #888;cursor:pointer}
+    pre{background:#f7f7f7;padding:12px;border-radius:8px;overflow:auto}
+  </style>
+</head>
+<body>
+  <h1>🐱🐶 Cat vs Dog — Demo</h1>
+
+  <div class="card">
+    <div class="row">
+      <!-- istəsən mobil kamera üçün capture="environment" -->
+      <input id="file" type="file" accept="image/*" />
+      <button id="btn">Göndər</button>
+    </div>
+    <img id="preview" class="preview" alt="" />
+    <pre id="out"></pre>
+  </div>
+
+  <script>
+    // ---- DƏYİŞ: FastAPI serverin dəqiq ünvanı ----
+    const API_BASE = 'http://127.0.0.1:8000';
+
+    const fileInput = document.getElementById('file');
+    const btn = document.getElementById('btn');
+    const out = document.getElementById('out');
+    const preview = document.getElementById('preview');
+
+    // Drag & Drop (opsional)
+    ;(() => {
+      const card = document.querySelector('.card');
+      card.addEventListener('dragover', e => { e.preventDefault(); card.style.borderColor = '#333'; });
+      card.addEventListener('dragleave', () => { card.style.borderColor = '#ddd'; });
+      card.addEventListener('drop', e => {
+        e.preventDefault();
+        card.style.borderColor = '#ddd';
+        if (e.dataTransfer.files?.[0]) {
+          fileInput.files = e.dataTransfer.files;
+          previewSelected();
+        }
+      });
+    })();
+
+    fileInput.addEventListener('change', previewSelected);
+
+    function previewSelected() {
+      const f = fileInput.files?.[0];
+      if (!f) return;
+      if (!f.type.startsWith('image/')) {
+        out.textContent = 'Xəta: Yalnız şəkil faylları (image/*) qəbul olunur.';
+        fileInput.value = '';
+        preview.removeAttribute('src');
+        return;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        out.textContent = 'Xəta: Fayl çox böyükdür (maksimum 10MB).';
+        fileInput.value = '';
+        preview.removeAttribute('src');
+        return;
+      }
+      const url = URL.createObjectURL(f);
+      preview.src = url;
+      out.textContent = '';
+    }
+
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      const f = fileInput.files?.[0];
+      if (!f) return alert('Şəkil seç!');
+
+      const fd = new FormData();
+      fd.append('file', f);
+
+      btn.disabled = true;
+      const t0 = performance.now();
+      out.textContent = 'Yüklənir...';
+
+      try {
+        console.log('POST =>', `${API_BASE}/predict`, 'from', location.origin);
+        const res = await fetch(`${API_BASE}/predict`, { method: 'POST', body: fd });
+
+        // Xəta halları: body-ni YALNIZ BİR DƏFƏ oxu
+        if (!res.ok) {
+          const ct = res.headers.get('content-type') || '';
+          let detail = `HTTP ${res.status}`;
+          try {
+            if (ct.includes('application/json')) {
+              const j = await res.json();
+              detail = j?.detail || j?.message || JSON.stringify(j);
+            } else {
+              detail = await res.text();
+            }
+          } catch {
+            // oxunmadısa, status saxla
+          }
+          if (res.status === 405) {
+            detail = '405 Method Not Allowed — Yəqin səhifəni FastAPI-dən yox, başqa portdan açmısan və ya endpoint-ə GET gedib. Səhifəni http://127.0.0.1:8000/ ünvanından aç və POST /predict istifadə et.';
+          }
+          if (res.status === 413) detail = 'Fayl çox böyükdür (maksimum 10MB).';
+          if (res.status === 415) detail = 'Yalnız şəkil faylları qəbul olunur (image/*).';
+          throw new Error(detail);
+        }
+
+        const data = await res.json(); // OK olduqda yalnız bir dəfə oxu
+        const t1 = performance.now();
+        const ms = Math.round(t1 - t0);
+
+        out.innerHTML = `
+          <strong style="font-size:20px;">Nəticə:</strong><br>
+          <span>⏱ ${ms} ms</span><br>
+          <span>🐾 Label: <b>${data.label}</b></span><br>
+          <span>🐱 Cat ehtimalı: ${(data.probabilities.Cat * 100).toFixed(2)}%</span><br>
+          <span>🐶 Dog ehtimalı: ${(data.probabilities.Dog * 100).toFixed(2)}%</span>
+        `;
+        out.style.color = data.label === "Cat" ? "purple" : "blue";
+        out.style.transition = "0.3s ease";
+      } catch (err) {
+        out.textContent = 'Xəta: ' + (err.message || err);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
