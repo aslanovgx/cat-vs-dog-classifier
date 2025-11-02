@@ -1,12 +1,20 @@
 # app/main.py
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.status import HTTP_400_BAD_REQUEST
 from tensorflow.keras.models import load_model
 from PIL import Image, ImageFile
 import numpy as np
 import io
 import os
+import time
+
+# ---- Model və sxemlər ----
+from app.models import PredictionOut, ErrorOut
 
 # ---- Böyük şəkillərdə parçalanmanı icazələndir ----
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -21,8 +29,15 @@ IMG_SIZE = (150, 150)
 THRESHOLD = 0.5
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
 # ---- FastAPI tətbiqi ----
-app = FastAPI(title="Cat vs Dog Classifier")
+app = FastAPI(
+    title="Cat vs Dog Classifier",
+    description="FastAPI + TensorFlow ilə sadə pişik/it təsnifatı. Şəkil yüklə, etiket və ehtimalları al.",
+    version="1.0.0",
+    contact={"name": "Mustafa Aslanov", "email": "mustafa.aslanovv@gmail.com"},
+)
 
 # ---- Lokal test üçün CORS (istəyə görə silmək olar) ----
 app.add_middleware(
@@ -32,6 +47,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🔽 CORS-DAN SONRA BUNU ƏLAVƏ ET
+class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, max_bytes: int):
+        super().__init__(app)
+        self.max_bytes = max_bytes
+
+    async def dispatch(self, request, call_next):
+        cl = request.headers.get("content-length")
+        if cl and cl.isdigit() and int(cl) > self.max_bytes:
+            return JSONResponse(
+                status_code=HTTP_400_BAD_REQUEST,
+                content={"detail": f"File too large. Max {self.max_bytes // (1024*1024)}MB"},
+            )
+        return await call_next(request)
+
+# Middleware-i aktivləşdir
+app.add_middleware(LimitUploadSizeMiddleware, max_bytes=MAX_UPLOAD_BYTES)
+
 
 # ---- Modeli yüklə ----
 try:
@@ -67,22 +101,45 @@ def preprocess_image(file_bytes: bytes) -> np.ndarray:
         arr = np.array(img).astype("float32") / 255.0
         arr = np.expand_dims(arr, axis=0)
         return arr
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image data.")
+
+# ---- Exception handler-lər ----
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": "Validation error", "errors": exc.errors()},
+    )
 
 # ---- Proqnoz endpoint ----
-@app.post("/predict")
+@app.post(
+    "/predict",
+    response_model=PredictionOut,
+    responses={
+        400: {"model": ErrorOut},
+        413: {"model": ErrorOut},
+        415: {"model": ErrorOut},
+    },
+)
 async def predict(file: UploadFile = File(...)):
+    # Fayl adı və tipi yoxlanır
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded.")
-    if not (file.content_type and file.content_type.startswith("image/")):
-        raise HTTPException(status_code=415, detail="Only image files are accepted.")
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG/PNG/WebP images are accepted.")
+
 
     # Fayl ölçüsü limiti
     file_bytes = await file.read()
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large. Max 10MB.")
 
+    # Şəkli preprocess et
     x = preprocess_image(file_bytes)
 
     # Model proqnozu
@@ -90,24 +147,19 @@ async def predict(file: UploadFile = File(...)):
     prob_cat = 1.0 - prob_dog
     label = "Dog" if prob_dog >= THRESHOLD else "Cat"
 
-    return JSONResponse({
+    # JSON cavabı
+    return {
         "label": label,
         "probabilities": {"Cat": round(prob_cat, 4), "Dog": round(prob_dog, 4)},
-        "threshold": THRESHOLD
-    })
+        "threshold": THRESHOLD,
+    }
 
 # ---- Health check ----
 @app.get("/health")
 def health():
     return {"ok": True}
 
-
-
-# app/main.py faylının altına əlavə et:
-
-import time
-import os
-
+# ---- Faylın vəziyyəti: index.html haqqında info ----
 @app.get("/__index_info")
 def __index_info():
     exists = os.path.exists(INDEX_PATH)

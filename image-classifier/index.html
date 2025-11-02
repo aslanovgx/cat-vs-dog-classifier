@@ -1,18 +1,53 @@
 <!doctype html>
 <html lang="az">
+
 <head>
   <meta charset="utf-8" />
   <title>🐱🐶 Cat vs Dog — Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;max-width:720px;margin:40px auto;padding:0 16px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    .card{border:1px solid #ddd;border-radius:12px;padding:16px}
-    .preview{max-width:280px;margin-top:10px;display:block}
-    button{padding:10px 16px;border-radius:8px;border:1px solid #888;cursor:pointer}
-    pre{background:#f7f7f7;padding:12px;border-radius:8px;overflow:auto}
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 16px
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 16px
+    }
+
+    .preview {
+      max-width: 280px;
+      margin-top: 10px;
+      display: block
+    }
+
+    button {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid #888;
+      cursor: pointer
+    }
+
+    pre {
+      background: #f7f7f7;
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto
+    }
   </style>
 </head>
+
 <body>
   <h1>🐱🐶 Cat vs Dog — Demo</h1>
 
@@ -28,7 +63,9 @@
 
   <script>
     // ---- DƏYİŞ: FastAPI serverin dəqiq ünvanı ----
-    const API_BASE = 'http://127.0.0.1:8000';
+    // const API_BASE = 'http://127.0.0.1:8000';
+    const API_BASE = location.hostname.includes('localhost') ? 'http://127.0.0.1:8000' : '';
+
 
     const fileInput = document.getElementById('file');
     const btn = document.getElementById('btn');
@@ -36,7 +73,7 @@
     const preview = document.getElementById('preview');
 
     // Drag & Drop (opsional)
-    ;(() => {
+    ; (() => {
       const card = document.querySelector('.card');
       card.addEventListener('dragover', e => { e.preventDefault(); card.style.borderColor = '#333'; });
       card.addEventListener('dragleave', () => { card.style.borderColor = '#ddd'; });
@@ -132,4 +169,5 @@
     });
   </script>
 </body>
+
 </html>

@@ -1,0 +1,33 @@
+cd ~/Desktop/image-classifier
+
+cat > .dockerignore << 'EOF'
+# Python & venv
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter və böyük fayllar
+*.ipynb_checkpoints/
+notebook/
+dataset/
+
+# Git və sistem faylları
+.git
+.gitignore
+.DS_Store
+
+# Media və arxivlər
+*.mp4
+*.mov
+*.avi
+*.zip
+*.tar
+*.gz
+
+# Node/web build qalıqları (əgər varsa)
+node_modules/
+dist/
+build/
+EOF
