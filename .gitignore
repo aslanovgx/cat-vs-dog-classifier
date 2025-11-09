@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+app/__pycache__/
+*.pyc
+model/
+*.h5
+.env
